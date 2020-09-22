@@ -16,7 +16,7 @@ public class MeshGenerator : MonoBehaviour
     private List<Vector3> normals = new List<Vector3>();
     private List<int> indices = new List<int>();
 
-    private const float scale = 0.5f;
+    private const float scale = 0.25f;
     private const int edgeLength = 10;
 
     /// <summary>
@@ -59,21 +59,20 @@ public class MeshGenerator : MonoBehaviour
                     // Create mini cube
                     var offset = new Vector3(l, w, h);
 
-
-                    // Compute function at vertices
-                    var cubeVertices = MarchingCubes.Tables
-                        ._cubeVertices
-                        .Select(vertex => vertex * scale + offset)
-                        .Select(vertex => Field.F(vertex))
-                        .ToList();
-
-                    // Compute mask -- triangle index
-                    var cubeIndex = GetTriangleIndex(cubeVertices);
+                    // Compute function at vertices. Compute mask -- triangle index
+                    var cubeIndex = 0;
+                    for (var i = 0; i < 8; i++)
+                    {
+                        if (Field.F(MarchingCubes.Tables._cubeVertices[i] * scale + offset) > 0)
+                        {
+                            cubeIndex |= 1 << i;
+                        }
+                    }
 
                     // Triangle count
                     var triangleCount = MarchingCubes.Tables.CaseToTrianglesCount[cubeIndex];
 
-                    // For by 
+                    // Fill lists
                     for (var triangleIdx = 0; triangleIdx < triangleCount; triangleIdx++)
                     {
                         var triangleEdges = MarchingCubes.Tables.CaseToVertices[cubeIndex][triangleIdx];
@@ -94,15 +93,12 @@ public class MeshGenerator : MonoBehaviour
             }
         }
 
-
         // Here unity automatically assumes that vertices are points and hence (x, y, z)
         // will be represented as (x, y, z, 1) in homogenous coordinates
         _mesh.Clear();
         _mesh.SetVertices(vertices);
         _mesh.SetTriangles(indices, 0);
         _mesh.SetNormals(normals);
-        // _mesh.RecalculateNormals(); 
-        // Use _mesh.SetNormals(normals) instead when you calculate them
 
         // Upload mesh data to the GPU
         _mesh.UploadMeshData(false);
@@ -132,19 +128,5 @@ public class MeshGenerator : MonoBehaviour
             Field.F(point + dy) - Field.F(point - dy),
             Field.F(point + dz) - Field.F(point - dz)
         ));
-    }
-
-    private int GetTriangleIndex(IReadOnlyList<float> cubeVertices)
-    {
-        var triangleIndex = 0;
-        for (var i = 0; i < 8; i++)
-        {
-            if (cubeVertices[i] > 0)
-            {
-                triangleIndex |= 1 << i;
-            }
-        }
-
-        return triangleIndex;
     }
 }
