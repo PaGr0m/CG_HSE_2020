@@ -28,7 +28,7 @@ public class MarchingCubes
             new Vector3(1, 1, 1), // 6
             new Vector3(1, 0, 1), // 7
         };
-        
+
         /// <summary>
         /// Indices of vertices for a given edge
         /// </summary>
@@ -47,7 +47,7 @@ public class MarchingCubes
             new int[] {2, 6}, // 10
             new int[] {3, 7}, // 11
         };
-        
+
         /// <summary>
         /// How many triangles should be there in a cube for a given CaseIndex?
         /// </summary>

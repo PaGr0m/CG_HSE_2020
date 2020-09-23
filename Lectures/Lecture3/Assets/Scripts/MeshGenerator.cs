@@ -16,8 +16,16 @@ public class MeshGenerator : MonoBehaviour
     private List<Vector3> normals = new List<Vector3>();
     private List<int> indices = new List<int>();
 
-    private const float scale = 0.25f;
-    private const int edgeLength = 10;
+    private const float scale = 0.2f;
+    private const int edgeLength = 50;
+
+    private float[,,] grid = new float [edgeLength, edgeLength, edgeLength];
+    private Vector3 cubeOffset = new Vector3(edgeLength * scale, edgeLength * scale, edgeLength * scale) / 2;
+
+    private static readonly Vector3 DeltaX = new Vector3(scale / 5, 0, 0);
+    private static readonly Vector3 DeltaY = new Vector3(0, scale / 5, 0);
+    private static readonly Vector3 DeltaZ = new Vector3(0, 0, scale / 5);
+
 
     /// <summary>
     /// Executed by Unity upon object initialization. <see cref="https://docs.unity3d.com/Manual/ExecutionOrder.html"/>
@@ -49,30 +57,34 @@ public class MeshGenerator : MonoBehaviour
         // ----------------------------------------------------------------
         // Generate mesh here.
         // ----------------------------------------------------------------
-        var miniCube = new Vector3(scale, scale, scale);
-        for (float l = -edgeLength; l < edgeLength; l += miniCube.x)
+        // var miniCube = new Vector3(sa, edgeLength, edgeLength)
+        for (var l = 0; l < edgeLength; ++l)
         {
-            for (float w = -edgeLength; w < edgeLength; w += miniCube.y)
+            for (var w = 0; w < edgeLength; ++w)
             {
-                for (float h = -edgeLength; h < edgeLength; h += miniCube.z)
+                for (var h = 0; h < edgeLength; ++h)
                 {
-                    // Create mini cube
-                    var offset = new Vector3(l, w, h);
+                    grid[l, w, h] = Field.F(new Vector3(l, w, h) * scale - cubeOffset);
+                }
+            }
+        }
 
-                    // Compute function at vertices. Compute mask -- triangle index
-                    var cubeIndex = 0;
-                    for (var i = 0; i < 8; i++)
-                    {
-                        if (Field.F(MarchingCubes.Tables._cubeVertices[i] * scale + offset) > 0)
-                        {
-                            cubeIndex |= 1 << i;
-                        }
-                    }
+        for (var l = 0; l < edgeLength - 1; ++l)
+        {
+            for (var w = 0; w < edgeLength - 1; ++w)
+            {
+                for (var h = 0; h < edgeLength - 1; ++h)
+                {
+                    // Create mini cube.
+                    var offset = new Vector3(l, w, h) * scale - cubeOffset;
 
-                    // Triangle count
+                    // Compute function at vertices. Compute mask -- cube index.
+                    var cubeIndex = GetCubeIndex(l, w, h);
+
+                    // Triangle count.
                     var triangleCount = MarchingCubes.Tables.CaseToTrianglesCount[cubeIndex];
 
-                    // Fill lists
+                    // Fill lists.
                     for (var triangleIdx = 0; triangleIdx < triangleCount; triangleIdx++)
                     {
                         var triangleEdges = MarchingCubes.Tables.CaseToVertices[cubeIndex][triangleIdx];
@@ -112,21 +124,30 @@ public class MeshGenerator : MonoBehaviour
         var vertexPoint1 = MarchingCubes.Tables._cubeVertices[vertex1] * scale + offset;
         var vertexPoint2 = MarchingCubes.Tables._cubeVertices[vertex2] * scale + offset;
 
-        var paramT = -Field.F(vertexPoint1) / (Field.F(vertexPoint2) - Field.F(vertexPoint1));
+        var f1 = Field.F(vertexPoint1);
+        var f2 = Field.F(vertexPoint2);
 
-        return Vector3.Lerp(vertexPoint1, vertexPoint2, paramT);
+        return Vector3.Lerp(vertexPoint1, vertexPoint2, -f1 / (f2 - f1));
     }
 
     private Vector3 GetNormal(Vector3 point)
     {
-        var dx = new Vector3(scale / 5, 0, 0);
-        var dy = new Vector3(0, scale / 5, 0);
-        var dz = new Vector3(0, 0, scale / 5);
-
         return Vector3.Normalize(new Vector3(
-            Field.F(point + dx) - Field.F(point - dx),
-            Field.F(point + dy) - Field.F(point - dy),
-            Field.F(point + dz) - Field.F(point - dz)
+            Field.F(point) - Field.F(point - DeltaX),
+            Field.F(point) - Field.F(point - DeltaY),
+            Field.F(point) - Field.F(point - DeltaZ)
         ));
+    }
+
+    private int GetCubeIndex(int l, int w, int h)
+    {
+        return (grid[l, w, h] > 0 ? 0b1 : 0) |
+               (grid[l, w + 1, h] > 0 ? 0b10 : 0) |
+               (grid[l + 1, w + 1, h] > 0 ? 0b100 : 0) |
+               (grid[l + 1, w, h] > 0 ? 0b1000 : 0) |
+               (grid[l, w, h + 1] > 0 ? 0b10000 : 0) |
+               (grid[l, w + 1, h + 1] > 0 ? 0b100000 : 0) |
+               (grid[l + 1, w + 1, h + 1] > 0 ? 0b1000000 : 0) |
+               (grid[l + 1, w, h + 1] > 0 ? 0b10000000 : 0);
     }
 }
