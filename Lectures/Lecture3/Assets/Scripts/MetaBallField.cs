@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using UnityEngine;
+using UnityEngine.Profiling;
 
 [Serializable]
 public class MetaBallField
@@ -21,8 +22,10 @@ public class MetaBallField
     /// <summary>
     /// Calculate scalar field value at point
     /// </summary>
-    public float F(Vector3 position)
+     public float F(Vector3 position)
     {
+        Profiler.BeginSample("F");
+        
         float f = 0;
         // Naive implementation, just runs for all balls regardless the distance.
         // A better option would be to construct a sparse grid specifically around 
@@ -33,6 +36,8 @@ public class MetaBallField
 
         f *= BallRadius * BallRadius;
 
+        Profiler.EndSample();
+        
         return f - 1;
     }
 }
