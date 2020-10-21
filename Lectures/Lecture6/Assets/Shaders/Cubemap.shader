@@ -8,7 +8,10 @@
     }
     SubShader
     {
-        Tags { "RenderType"="Opaque" }
+        Tags
+        {
+            "RenderType"="Opaque"
+        }
         LOD 100
 
         Pass
@@ -26,6 +29,7 @@
             {
                 float4 vertex : POSITION;
                 fixed3 normal : NORMAL;
+                float4 tangent : TANGENT;
             };
 
             struct v2f
@@ -33,6 +37,7 @@
                 float4 clip : SV_POSITION;
                 float4 pos : TEXCOORD1;
                 fixed3 normal : NORMAL;
+                float4 tangent : TANGENT;
             };
 
             float4 _BaseColor;
@@ -47,6 +52,7 @@
                 o.clip = UnityObjectToClipPos(v.vertex);
                 o.pos = mul(UNITY_MATRIX_M, v.vertex);
                 o.normal = UnityObjectToWorldNormal(v.normal);
+                o.tangent = v.tangent;
                 return o;
             }
 
@@ -89,6 +95,33 @@
                 return a2 / (UNITY_PI * Sqr(NDotH2 * (a2 - 1) + 1));
             }
 
+            float3 MonteCarlo(float3 normalDir, float3 viewDir, float4 tangent)
+            {
+                int iterations = 10000;
+
+                float3 orto = tangent.xyz;
+                float3 orto2 = cross(normalDir, orto);
+                
+                float norm = 0;
+                float3 lighting = 0;
+                for (int i = 0; i < iterations; ++i)
+                {
+                    float cosTheta = Random(i);
+                    float alpha = Random(i + iterations) * 2 * UNITY_PI;
+                    float sinTheta = sqrt(1 - Sqr(cosTheta));
+                    
+                    float3 lightDir = sinTheta * cos(alpha) * orto +
+                                      sinTheta * sin(alpha) * orto2 +
+                                      cosTheta * normalDir;
+
+                    float specular = GetSpecularBRDF(viewDir, lightDir, normalDir) * cosTheta;
+                    norm += specular;
+                    lighting += specular * SampleColor(lightDir) ;
+                }
+                
+                return lighting / norm;
+            }
+
             fixed4 frag (v2f i) : SV_Target
             {
                 float3 normal = normalize(i.normal);
@@ -98,8 +131,7 @@
                 // Replace this specular calculation by Montecarlo.
                 // Normalize the BRDF in such a way, that integral over a hemysphere of (BRDF * dot(normal, w')) == 1
                 // TIP: use Random(i) to get a pseudo-random value.
-                float3 viewRefl = reflect(-viewDirection.xyz, normal);
-                float3 specular = SampleColor(viewRefl);
+				float3 specular = MonteCarlo(normal, viewDirection, i.tangent);
                 
                 return fixed4(specular, 1);
             }
