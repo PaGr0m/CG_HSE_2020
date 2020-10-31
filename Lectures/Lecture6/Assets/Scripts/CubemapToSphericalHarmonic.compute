@@ -40,42 +40,134 @@ float Random(uint seed)
 }
 
 float3 SampleColor(float3 direction)
-{   
+{
     float4 tex = _Env.SampleLevel(samplerLinearRepeat, direction, 0);
     return tex.rgb;
+}
+
+float4 Compute_SH_0_1(float channel, float3 lightDir)
+{
+    return float4(
+        channel * lightDir.x,
+        channel * lightDir.y,
+        channel * lightDir.z,
+        channel
+    );
+}
+
+float4 Compute_SH_2(float channel, float3 lightDir)
+{
+    return float4(
+        channel * lightDir.y * lightDir.x,
+        channel * lightDir.y * lightDir.z,
+        channel * lightDir.x * lightDir.z,
+        channel * (3 * lightDir.z * lightDir.z - 1)
+    );
+}
+
+float4 Compute_SH_2_RGB(float3 color, float3 lightDir)
+{
+    return float4(
+        color.r * (lightDir.x * lightDir.x - lightDir.y * lightDir.y),
+        color.g * (lightDir.x * lightDir.x - lightDir.y * lightDir.y),
+        color.b * (lightDir.x * lightDir.x - lightDir.y * lightDir.y),
+        0
+    );
+}
+
+float4 AddCoefficientsSH_0_1(float4 vec)
+{
+    vec *= 2.0;
+    vec.w /= 2.0;
+
+    return vec;
+}
+
+float4 AddCoefficientsSH_2(float4 vec)
+{
+    vec *= 3.75;
+    vec.w = vec.w / 3.75 * 0.625;
+
+    return vec;
+}
+
+float4 AddCoefficientsSH_2_RGB(float4 vec)
+{
+    vec *= 0.234375;
+    vec.w /= 0.234375;
+
+    return vec;
 }
 
 [numthreads(1024, 1, 1)]
 void ComputeHarmonics(uint id : SV_DispatchThreadID)
 {
     const int THREADS = 1024;
-    const int SAMPLES = 100;
-    
+    const int SAMPLES = 5000;
+
     // See SH.shader for more details
     float4 results[7] = {
         float4(0, 0, 0, 0), // SH_0_1_r
         float4(0, 0, 0, 0), // SH_0_1_g
         float4(0, 0, 0, 0), // SH_0_1_b
-        
+
         float4(0, 0, 0, 0), // SH_2_r
         float4(0, 0, 0, 0), // SH_2_g
         float4(0, 0, 0, 0), // SH_2_b
-        
+
         float4(0, 0, 0, 0), // SH_2_rgb
     };
-    
+
     // Populate results buffer using monte-carlo method.
     // You can see the Random(i) function. Use it just as with the previous task.
-    
+
     // TASK: project light from _Env to spherical harmonic coefficients and store them in results[]
-    
-    SH_0_1_r[id] = results[0];
-    SH_0_1_g[id] = results[1];
-    SH_0_1_b[id] = results[2];
-    
-    SH_2_r[id] = results[3];
-    SH_2_g[id] = results[4];
-    SH_2_b[id] = results[5];    
-    
-    SH_2_rgb[id] = results[6];
+    for (int i = 0; i < SAMPLES; ++i)
+    {
+        float cosTheta = Random(i) * 2 - 1;
+        float sinTheta = sqrt(1 - cosTheta * cosTheta);
+        float alpha = Random(i + SAMPLES) * TWO_PI;
+
+        float3 lightDir = float3(
+            sinTheta * cos(alpha),
+            sinTheta * sin(alpha),
+            cosTheta
+        );
+        float3 color = SampleColor(lightDir);
+
+        /** SH 1 **/
+        results[0] += Compute_SH_0_1(color.r, lightDir);
+        results[1] += Compute_SH_0_1(color.g, lightDir);
+        results[2] += Compute_SH_0_1(color.b, lightDir);
+
+        /** SH 2 **/
+        results[3] += Compute_SH_2(color.r, lightDir);
+        results[4] += Compute_SH_2(color.g, lightDir);
+        results[5] += Compute_SH_2(color.b, lightDir);
+
+        // SH_2_rgb
+        results[6] += Compute_SH_2_RGB(color, lightDir);
+    }
+
+    // Add coefficients
+    results[0] = AddCoefficientsSH_0_1(results[0]);
+    results[1] = AddCoefficientsSH_0_1(results[1]);
+    results[2] = AddCoefficientsSH_0_1(results[2]);
+
+    results[3] = AddCoefficientsSH_2(results[3]);
+    results[4] = AddCoefficientsSH_2(results[4]);
+    results[5] = AddCoefficientsSH_2(results[5]);
+
+    results[6] = AddCoefficientsSH_2_RGB(results[6]);
+
+    // Results
+    SH_0_1_r[id] = results[0] / SAMPLES;
+    SH_0_1_g[id] = results[1] / SAMPLES;
+    SH_0_1_b[id] = results[2] / SAMPLES;
+
+    SH_2_r[id] = results[3] / SAMPLES;
+    SH_2_g[id] = results[4] / SAMPLES;
+    SH_2_b[id] = results[5] / SAMPLES;
+
+    SH_2_rgb[id] = results[6] / SAMPLES;
 }
