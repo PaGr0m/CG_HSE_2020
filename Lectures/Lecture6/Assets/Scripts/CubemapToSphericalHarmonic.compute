@@ -1,4 +1,4 @@
-﻿﻿// Each #kernel tells which function to compile; you can have many kernels
+﻿// Each #kernel tells which function to compile; you can have many kernels
 #pragma kernel ComputeHarmonics
 
 #define PI            3.14159265359f
@@ -40,7 +40,7 @@ float Random(uint seed)
 }
 
 float3 SampleColor(float3 direction)
-{   
+{
     float4 tex = _Env.SampleLevel(samplerLinearRepeat, direction, 0);
     return tex.rgb;
 }
@@ -49,33 +49,124 @@ float3 SampleColor(float3 direction)
 void ComputeHarmonics(uint id : SV_DispatchThreadID)
 {
     const int THREADS = 1024;
-    const int SAMPLES = 100;
-    
+    const int SAMPLES = 1000;
+
     // See SH.shader for more details
     float4 results[7] = {
         float4(0, 0, 0, 0), // SH_0_1_r
         float4(0, 0, 0, 0), // SH_0_1_g
         float4(0, 0, 0, 0), // SH_0_1_b
-        
+
         float4(0, 0, 0, 0), // SH_2_r
         float4(0, 0, 0, 0), // SH_2_g
         float4(0, 0, 0, 0), // SH_2_b
-        
+
         float4(0, 0, 0, 0), // SH_2_rgb
     };
-    
+
+    for (int i = 0; i < SAMPLES; ++i)
+    {
+        float cosTheta = Random(i) * 2 - 1;
+        float sinTheta = sqrt(1 - cosTheta * cosTheta);
+        float alpha = Random(i + SAMPLES) * TWO_PI;
+        
+        float3 lightDir = float3(
+            sinTheta * cos(alpha),
+            sinTheta * sin(alpha),
+            cosTheta
+        );
+        float3 color = SampleColor(lightDir);
+
+        /** SH 1 **/
+        // SH_0_1_r
+        results[0].x += color.r * lightDir.x;
+        results[0].y += color.r * lightDir.y;
+        results[0].z += color.r * lightDir.z;
+        results[0].w += color.r;
+
+        // SH_0_1_g
+        results[1].x += color.g * lightDir.x;
+        results[1].y += color.g * lightDir.y;
+        results[1].z += color.g * lightDir.z;
+        results[1].w += color.g;
+
+        // SH_0_1_b
+        results[2].x += color.b * lightDir.x;
+        results[2].y += color.b * lightDir.y;
+        results[2].z += color.b * lightDir.z;
+        results[2].w += color.b;
+
+        /** SH 2 **/
+        // SH_2_r
+        results[3].x += color.r * lightDir.y * lightDir.x;
+        results[3].y += color.r * lightDir.y * lightDir.z;
+        results[3].z += color.r * lightDir.x * lightDir.z;
+        results[3].w += color.r * (3 * lightDir.z * lightDir.z - 1);
+
+        // SH_2_g
+        results[4].x += color.g * lightDir.y * lightDir.x;
+        results[4].y += color.g * lightDir.y * lightDir.z;
+        results[4].z += color.g * lightDir.x * lightDir.z;
+        results[4].w += color.g * (3 * lightDir.z * lightDir.z - 1);
+
+        // SH_2_b
+        results[5].x += color.b * lightDir.y * lightDir.x;
+        results[5].y += color.b * lightDir.y * lightDir.z;
+        results[5].z += color.b * lightDir.x * lightDir.z;
+        results[5].w += color.b * (3 * lightDir.z * lightDir.z - 1);
+
+        // SH_2_rgb
+        results[6].x += color.r * (lightDir.x * lightDir.x - lightDir.y * lightDir.y);
+        results[6].y += color.g * (lightDir.x * lightDir.x - lightDir.y * lightDir.y);
+        results[6].z += color.b * (lightDir.x * lightDir.x - lightDir.y * lightDir.y);
+        results[6].w += 0;
+    }
+
+    results[0].x *= 2.0;
+    results[1].x *= 2.0;
+    results[2].x *= 2.0;
+
+    results[0].y *= 2.0;
+    results[1].y *= 2.0;
+    results[2].y *= 2.0;
+
+    results[0].z *= 2.0;
+    results[1].z *= 2.0;
+    results[2].z *= 2.0;
+
+    results[3].x *= 3.75;
+    results[4].x *= 3.75;
+    results[5].x *= 3.75;
+
+    results[3].y *= 3.75;
+    results[4].y *= 3.75;
+    results[5].y *= 3.75;
+
+    results[3].z *= 3.75;
+    results[4].z *= 3.75;
+    results[5].z *= 3.75;
+
+    results[3].w *= 0.625;
+    results[4].w *= 0.625;
+    results[5].w *= 0.625;
+
+    results[6].x *= 0.234375;
+    results[6].y *= 0.234375;
+    results[6].z *= 0.234375;
+
+
     // Populate results buffer using monte-carlo method.
     // You can see the Random(i) function. Use it just as with the previous task.
-    
+
     // TASK: project light from _Env to spherical harmonic coefficients and store them in results[]
-    
-    SH_0_1_r[id] = results[0];
-    SH_0_1_g[id] = results[1];
-    SH_0_1_b[id] = results[2];
-    
-    SH_2_r[id] = results[3];
-    SH_2_g[id] = results[4];
-    SH_2_b[id] = results[5];    
-    
-    SH_2_rgb[id] = results[6];
+
+    SH_0_1_r[id] = results[0] / SAMPLES;
+    SH_0_1_g[id] = results[1] / SAMPLES;
+    SH_0_1_b[id] = results[2] / SAMPLES;
+
+    SH_2_r[id] = results[3] / SAMPLES;
+    SH_2_g[id] = results[4] / SAMPLES;
+    SH_2_b[id] = results[5] / SAMPLES;
+
+    SH_2_rgb[id] = results[6] / SAMPLES;
 }
