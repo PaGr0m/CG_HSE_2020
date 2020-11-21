@@ -77,18 +77,18 @@ Material:
     - _Glossiness: 0.5
     - _GlossyReflections: 1
     - _MODE: 0
-    - _MaxHeight: 0.00599
+    - _MaxHeight: 0.00366
     - _MaxStepCount: 128
     - _Metallic: 0
     - _Mode: 0
     - _OcclusionStrength: 1
     - _Overlay: 0
     - _Parallax: 0.005
-    - _Reflectivity: 37.9
+    - _Reflectivity: 45.5
     - _SmoothnessTextureChannel: 0
     - _SpecularHighlights: 1
     - _SrcBlend: 1
-    - _StepLength: 0.0003
+    - _StepLength: 3.99
     - _UVSec: 0
     - _ZWrite: 1
     m_Colors:
