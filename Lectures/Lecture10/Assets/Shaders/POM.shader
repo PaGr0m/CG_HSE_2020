@@ -27,9 +27,14 @@
     struct v2f {
         float3 worldPos : TEXCOORD0;
         half3 worldSurfaceNormal : TEXCOORD4;
+        
         // texture coordinate for the normal map
         float2 uv : TEXCOORD5;
         float4 clip : SV_POSITION;
+        
+        half3 tspace0 : TEXCOORD1;
+        half3 tspace1 : TEXCOORD2;
+        half3 tspace2 : TEXCOORD3;
     };
 
     // Vertex shader now also gets a per-vertex tangent vector.
@@ -39,14 +44,21 @@
         v2f o;
         o.clip = UnityObjectToClipPos(vertex);
         o.worldPos = mul(unity_ObjectToWorld, vertex).xyz;
+        
         half3 wNormal = UnityObjectToWorldNormal(normal);
         half3 wTangent = UnityObjectToWorldDir(tangent.xyz);
-        
+
         o.uv = uv;
         o.worldSurfaceNormal = normal;
-        
+
         // compute bitangent from cross product of normal and tangent and output it
-        
+        half tangentSign = tangent.w * unity_WorldTransformParams.w;
+        half3 wBitangent = cross(wNormal, wTangent) * tangentSign;
+
+        o.tspace0 = half3(wTangent.x, wBitangent.x, wNormal.x);
+        o.tspace1 = half3(wTangent.y, wBitangent.y, wNormal.y);
+        o.tspace2 = half3(wTangent.z, wBitangent.z, wNormal.z);
+                
         return o;
     }
 
@@ -67,26 +79,74 @@
     void frag (in v2f i, out half4 outColor : COLOR, out float outDepth : DEPTH)
     {
         float2 uv = i.uv;
-        
         float3 worldViewDir = normalize(i.worldPos.xyz - _WorldSpaceCameraPos.xyz);
+        float3 tangentViewDir = mul(worldViewDir, float3x3(i.tspace0, i.tspace1, i.tspace2));
+        
 #if MODE_BUMP
         // Change UV according to the Parallax Offset Mapping
+        float4 heightMap = tex2D(_HeightMap, uv);
+        float height = (1 - heightMap.x) * _MaxHeight;
+        uv -= tangentViewDir.xy / tangentViewDir.z * height;
 #endif   
     
         float depthDif = 0;
 #if MODE_POM | MODE_POM_SHADOWS    
         // Change UV according to Parallax Occclusion Mapping
+        float3 lerp_a = 0;
+        float3 lerp_b = 0;
+
+        float lerp_t = 1;
+        float last_lerp_t;
+
+        float height;
+        float4 heightMap;
+
+        bool is_cross = false;
+        for (int step = 0; step < _MaxStepCount; ++step) {
+            float3 uv_offset = -tangentViewDir * step * _StepLength;
+            heightMap = tex2D(_HeightMap, uv + uv_offset.xy);
+            height = (1 - heightMap.x) * _MaxHeight;
+            
+            if (!is_cross) {
+                lerp_b = lerp_a;
+                lerp_a = uv_offset;
+
+                last_lerp_t = lerp_t;
+                lerp_t = height - uv_offset.z;
+                is_cross = lerp_t < 0;
+            }
+        }
+
+        lerp_t /= (lerp_t - last_lerp_t);
+        uv += lerp(lerp_a, lerp_b, lerp_t);
+
+        heightMap = tex2D(_HeightMap, uv);
+        height = (1 - heightMap.x) * _MaxHeight;
+
+        depthDif = height;
 #endif
 
         float3 worldLightDir = normalize(_WorldSpaceLightPos0.xyz);
+        float3 tangentLightDir = mul(float3x3(i.tspace0, i.tspace1, i.tspace2), worldLightDir);
         float shadow = 0;
 #if MODE_POM_SHADOWS
         // Calculate soft shadows according to Parallax Occclusion Mapping, assign to shadow
+        for (int step = 0; step < _MaxStepCount; ++step) {
+            float3 uv_offset = tangentLightDir * step * _StepLength;
+            float4  heightMap = tex2D(_HeightMap, uv + uv_offset.xy);
+            float height = (1 - heightMap.x) * _MaxHeight;
+            shadow = max(shadow, height + uv_offset.z);
+        } 
 #endif
         
         half3 normal = i.worldSurfaceNormal;
 #if !MODE_PLAIN
         // Implement Normal Mapping
+        half3 tnormal = UnpackNormal(tex2D(_NormalMap, uv));
+
+        normal.x = dot(i.tspace0, tnormal);
+        normal.y = dot(i.tspace1, tnormal);
+        normal.z = dot(i.tspace2, tnormal);
 #endif
 
         // Diffuse lightning
@@ -94,7 +154,7 @@
         half3 diffuseLight = max(0, cosTheta) * _LightColor0 * max(0, 1 - shadow);
         
         // Specular lighting (ad-hoc)
-        half specularLight = pow(max(0, dot(worldViewDir, reflect(worldLightDir, normal))), _Reflectivity) * _LightColor0 * max(0, 1 - shadow); 
+        half specularLight = pow(max(0, dot(worldViewDir,reflect(worldLightDir, normal))), _Reflectivity) * _LightColor0 * max(0, 1 - shadow); 
 
         // Ambient lighting
         half3 ambient = ShadeSH9(half4(UnityObjectToWorldNormal(normal), 1));
@@ -102,7 +162,7 @@
         // Return resulting color
         float3 texColor = tex2D(_MainTex, uv);
         outColor = half4((diffuseLight + specularLight + ambient) * texColor, 0);
-        outDepth = LinearEyeDepthToOutDepth(LinearEyeDepth(i.clip.z));
+        outDepth = LinearEyeDepthToOutDepth(LinearEyeDepth(i.clip.z - depthDif));
     }
     ENDCG
     
